@@ -31,7 +31,7 @@ def get_secret(
     raise EnvironmentError(f"Set the {key} environment variable")
 
 
-MONGODB_DB_NAME = get_secret("MONGODB_DB_NAME")
-MONGODB_URI = get_secret("MONGODB_URI")
+MONGO_DB_NAME = get_secret("MONGO_DB_NAME")
+MONGO_URL = get_secret("MONGO_URI")
 NAVER_API_SECRET = get_secret("NAVER_API_SECRET")
 NAVER_API_ID = get_secret("NAVER_API_ID")
