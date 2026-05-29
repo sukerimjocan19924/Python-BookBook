@@ -7,5 +7,6 @@ class BookModel(Model):
     publisher: str
     price: int
     image: str
+    is_favorite: bool = False
 
     model_config = {"collection": "books"}

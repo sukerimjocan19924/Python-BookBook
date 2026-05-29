@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pathlib import Path
 
@@ -14,6 +15,8 @@ app = FastAPI()
 
 
 BASE_DIR = Path(__file__).resolve().parent
+
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
@@ -34,15 +37,12 @@ async def root(request: Request):
 async def read_item(request: Request, q: str):
     keyword = q
 
-    if not keyword:
-        return templates.TemplateResponse(
-            request=request,
-            name="index.html",
-            context={"message": "검색어를 입력해주세요"},
-        )
     naver_book_scraper = NaverBookScraper()
-
     books = await naver_book_scraper.search(keyword, 10)
+
+    favorite_books = await mongodb.engine.find(BookModel, BookModel.is_favorite == True)
+
+    favorite_images = [book.image for book in favorite_books]
 
     book_models = []
 
@@ -54,12 +54,59 @@ async def read_item(request: Request, q: str):
             price=int(book.get("discount") or 0),
             image=book["image"],
         )
+
+        if book_model.image in favorite_images:
+            book_model.is_favorite = True
+
         book_models.append(book_model)
 
-    await mongodb.engine.save_all(book_models)
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"keyword": q, "books": book_models, "next_url": f"/search?q={q}"},
+    )
+
+
+@app.post("/favorites")
+async def toggle_favorite(
+    request: Request,
+    keyword: str = Form(...),
+    publisher: str = Form(...),
+    price: int = Form(...),
+    image: str = Form(...),
+    next_url: str = Form("/"),
+):
+    favorite_book = await mongodb.engine.find_one(
+        BookModel,
+        (BookModel.keyword == keyword)
+        & (BookModel.publisher == publisher)
+        & (BookModel.image == image)
+        & (BookModel.is_favorite == True),
+    )
+    if favorite_book:
+        await mongodb.engine.delete(favorite_book)
+
+    else:
+        book = BookModel(
+            keyword=keyword,
+            publisher=publisher,
+            price=price,
+            image=image,
+            is_favorite=True,
+        )
+        await mongodb.engine.save(book)
+
+    return RedirectResponse(url=next_url, status_code=303)
+
+
+@app.get("/favorites", response_class=HTMLResponse)
+async def favorites(request: Request):
+    books = await mongodb.engine.find(BookModel, BookModel.is_favorite == True)
 
     return templates.TemplateResponse(
-        request=request, name="index.html", context={"keyword": q, "books": book_models}
+        request=request,
+        name="index.html",
+        context={"title": "즐겨찾기 목록", "books": books, "next_url": "/favorites"},
     )
 
 
